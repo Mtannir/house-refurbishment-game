@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 
-# --- Game Setup ---
-st.set_page_config(page_title="House Refurbishment Game", page_icon="🏠", layout="centered")
+# --- Setup ---
+st.set_page_config(page_title="House Refurbishment Game", page_icon="🏠", layout="wide")
 
 # --- Data ---
 materials = pd.DataFrame({
@@ -15,102 +15,71 @@ manpower = pd.DataFrame({
     "Rate (£/hr)": [25, 40, 38, 22, 28]
 })
 
-tasks = [
-    {"task": "Painting Living Room", "base_hours": 16},
-    {"task": "Tiling Bathroom", "base_hours": 20},
-    {"task": "Fitting Kitchen", "base_hours": 40},
-    {"task": "Electrical Work", "base_hours": 30},
-    {"task": "Plumbing Work", "base_hours": 25}
-]
+tasks = ["Painting Living Room", "Tiling Bathroom", "Fitting Kitchen", "Electrical Work", "Plumbing Work"]
 
 budget_limit = 90000
-time_limit = 10 * 5 * 8  # 10 weeks * 5 days * 8 hours = 400 hours
+time_limit = 400  # hours (10 weeks x 5 days x 8 hours)
 
-# --- Persistent state ---
-if "level" not in st.session_state:
-    st.session_state.level = 1
-if "plan" not in st.session_state:
-    st.session_state.plan = []
+# --- Game Intro ---
+st.title("🏠 House Refurbishment Planning Challenge")
+st.write("Welcome! Plan the refurbishment project. Stay within **£90,000 budget** and **10 weeks (400 hours)**.")
 
-# --- Levels ---
-if st.session_state.level == 1:
-    st.title("🏠 House Refurbishment Planning Challenge")
-    st.header("Level 1 – Project Briefing")
-    st.write("Welcome! You are the project manager for a **house refurbishment project**.")
-    st.write(f"- Budget available: **£{budget_limit}**")
-    st.write(f"- Deadline: **10 weeks (~400 working hours)**")
-    st.write("Your job is to **plan resources, costs, and timeline**.")
-    if st.button("Start the Game"):
-        st.session_state.level = 2
-        st.rerun()
+# --- Show floor plan ---
+st.image("house_plan_coloured_final.png", caption="House / Flat Plan (with dimensions)", use_container_width=True)
 
-elif st.session_state.level == 2:
-    st.header("Level 2 – Resource Planning")
-    st.write("📦 **Materials available:**")
-    st.table(materials)
-    st.write("👷 **Manpower options:**")
-    st.table(manpower)
-    if st.button("Next: Timeline Planning"):
-        st.session_state.level = 3
-        st.rerun()
+# --- Interactive Planning Table ---
+st.header("📋 Step 1: Enter Your Estimates")
 
-elif st.session_state.level == 3:
-    st.header("Level 3 – Timeline & Cost Planning")
-    st.write("Assign workers and estimate time for each task.")
+# Build editable dataframe for planning
+df = pd.DataFrame({
+    "Task": tasks,
+    "Assigned Worker": [manpower["Role"].iloc[0]] * len(tasks),
+    "Estimated Hours": [0] * len(tasks)
+})
 
-    total_cost = 0
-    total_hours = 0
-    plan = []
+edited_df = st.data_editor(
+    df,
+    column_config={
+        "Assigned Worker": st.column_config.SelectboxColumn(
+            "Assigned Worker", options=list(manpower["Role"])
+        ),
+        "Estimated Hours": st.column_config.NumberColumn("Estimated Hours (h)", min_value=1, step=1)
+    },
+    hide_index=True
+)
 
-    for t in tasks:
-        st.subheader(t["task"])
-        worker = st.selectbox(
-            f"Choose a worker for {t['task']}", manpower["Role"], key=f"{t['task']}_worker"
-        )
-        hours = st.number_input(
-            f"Estimated hours (base {t['base_hours']}h)", min_value=1, value=t["base_hours"], step=1, key=f"{t['task']}_hours"
-        )
-        rate = manpower.loc[manpower["Role"] == worker, "Rate (£/hr)"].values[0]
-        cost = hours * rate
-        st.write(f"💰 Cost for {t['task']}: **£{cost}**")
-        total_cost += cost
-        total_hours += hours
-        plan.append({"task": t["task"], "worker": worker, "hours": hours, "cost": cost})
+# --- Calculations ---
+results = []
+total_cost = 0
+total_hours = 0
 
-    st.session_state.plan = plan
-    st.write("---")
-    st.write(f"📊 **Total Estimated Cost:** £{total_cost}")
-    st.write(f"⏳ **Total Estimated Time:** {total_hours} hours (~{total_hours/40:.1f} weeks)")
+for i, row in edited_df.iterrows():
+    worker = row["Assigned Worker"]
+    hours = row["Estimated Hours"]
+    rate = manpower.loc[manpower["Role"] == worker, "Rate (£/hr)"].values[0]
+    cost = hours * rate
+    results.append([row["Task"], worker, hours, cost])
+    total_cost += cost
+    total_hours += hours
 
-    if st.button("Next: Budget Check"):
-        st.session_state.total_cost = total_cost
-        st.session_state.total_hours = total_hours
-        st.session_state.level = 4
-        st.rerun()
+results_df = pd.DataFrame(results, columns=["Task", "Worker", "Hours", "Cost (£)"])
 
-elif st.session_state.level == 4:
-    st.header("Level 4 – Budget Check")
-    cost = st.session_state.total_cost
-    hours = st.session_state.total_hours
+# --- Show results ---
+st.header("📊 Step 2: Results")
+st.dataframe(results_df, hide_index=True)
 
-    if cost > budget_limit or hours > time_limit:
-        st.error("⚠️ Your plan is NOT feasible. You exceeded budget or time.")
-        if st.button("Revise Plan"):
-            st.session_state.level = 3
-            st.rerun()
-    else:
-        st.success("✅ Great job! Your plan fits within budget and deadline.")
-        if st.button("Next: Reflection"):
-            st.session_state.level = 5
-            st.rerun()
+weeks = total_hours / 40  # 40h per week
+st.write(f"**Total Cost:** £{total_cost}")
+st.write(f"**Total Time:** {total_hours} hours (~{weeks:.1f} weeks)")
 
-elif st.session_state.level == 5:
-    st.header("Level 5 – Reflection & Debrief")
-    st.write("🎉 You completed the refurbishment planning challenge!")
-    st.write("Now reflect on your decisions:")
-    st.text_area("What trade-offs did you face between cost and time?")
-    st.text_area("If you had more budget, what improvements would you make?")
-    st.balloons()
-    if st.button("Restart Game"):
-        st.session_state.level = 1
-        st.rerun()
+# --- Feasibility Check ---
+st.header("✅ Step 3: Feasibility Check")
+if total_cost > budget_limit or total_hours > time_limit:
+    st.error("⚠️ Plan NOT feasible. Over budget or time!")
+else:
+    st.success("🎉 Plan is feasible! You stayed within budget and time.")
+
+# --- Reflection ---
+st.header("📝 Step 4: Reflection")
+st.text_area("What challenges did you face balancing cost vs. time?")
+st.text_area("If you had more budget, what would you improve?")
